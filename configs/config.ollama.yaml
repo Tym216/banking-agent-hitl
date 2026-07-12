@@ -1,0 +1,34 @@
+# Ollama 本地推理配置。使用方法：
+#   python -m banking_agent.cli --config configs/config.ollama.yaml --scripted
+# 前置条件：ollama serve 已启动，且已 ollama pull 模型
+
+llm:
+  provider: ollama              # 原生 API，支持 think 开关；openai_compat 也可用但无法关思考
+  base_url: "http://localhost:11434"
+  model: "qwen3.5:9b"
+  api_key_env: OPENAI_API_KEY
+  temperature: 0.1
+  timeout_s: 180                # 本地推理留足余量
+  # 实测（qwen3.5:9b）：think=false 单轮 0.4~2.5s 但意图分类不可靠（越权/转账误路由）；
+  # think=true 单轮 4~10s，全场景正确。质量优先，默认开启。
+  think: true
+
+embedding:
+  provider: sentence_transformers
+  model: "BAAI/bge-small-zh-v1.5"
+
+rag:
+  kb_dir: "data/knowledge_base"
+  index_dir: "data/index"
+  chunk_size: 400
+  chunk_overlap: 50
+  top_k: 3
+  high_threshold: 0.60
+  low_threshold: 0.40
+
+storage:
+  db_path: "data/banking_agent.db"
+  checkpoint_db_path: "data/checkpoints.db"
+
+observability:
+  langsmith_project: "banking-agent-hitl-dev"
