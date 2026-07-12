@@ -1,0 +1,43 @@
+# 银行客服 Agent 全局配置
+# 所有键都可以用环境变量覆盖，前缀 BANKING_AGENT_，双下划线分层：
+#   BANKING_AGENT_LLM__PROVIDER=openai_compat
+
+llm:
+  # mock: 规则驱动的假 LLM，离线可跑，用于 demo 和测试
+  # openai_compat: 兼容 OpenAI 协议的任意服务（OpenAI / vLLM / Ollama）
+  provider: Ollama #mock
+  base_url: "https://api.openai.com/v1"   # vLLM: http://localhost:8000/v1  Ollama: http://localhost:11434/v1
+  model: "gpt-4o-mini"
+  api_key_env: OPENAI_API_KEY             # 从这个环境变量读 key，不写进配置
+  temperature: 0.1
+  timeout_s: 60
+
+embedding:
+  # mock: 哈希伪向量（离线、确定性，仅测试）
+  # sentence_transformers: 本地模型（demo 默认，首次运行会下载模型）
+  # openai_compat: 走 embedding API
+  provider: sentence_transformers
+  model: "BAAI/bge-small-zh-v1.5"
+  base_url: ""
+  api_key_env: OPENAI_API_KEY
+  dim: 512          # mock 模式使用；sentence_transformers 自动探测
+
+rag:
+  kb_dir: "data/knowledge_base"
+  index_dir: "data/index"
+  chunk_size: 400
+  chunk_overlap: 50
+  top_k: 3
+  # 相似度双阈值（余弦相似度，向量已归一化）。
+  # 注意：阈值必须按 embedding 模型标定。bge-small-zh 实测：命中 ~0.76，无关 ~0.32
+  high_threshold: 0.60    # >= high: 直接回答
+  low_threshold: 0.40     # [low, high): 低置信 → 追问；< low: 拒答
+
+storage:
+  db_path: "data/banking_agent.db"          # 审计与业务数据
+  checkpoint_db_path: "data/checkpoints.db" # LangGraph 状态持久化（中断/恢复）
+
+observability:
+  # LangSmith 项目名（按用途分：日常开发 -dev；跑评估集换 -eval 配置）。
+  # 密钥与开关（LANGSMITH_API_KEY / LANGSMITH_TRACING）走环境变量。
+  langsmith_project: "banking-agent-hitl-dev"

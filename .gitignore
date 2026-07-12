@@ -1,0 +1,12 @@
+venv-banking-agent/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+data/index/
+data/*.db
+.env
+.claude/
+
+# 私人求职材料，不进公开仓库
+docs/
