@@ -18,15 +18,7 @@ class TicketParams(BaseModel):
 
 def _create_ticket(user: User, params: BaseModel) -> dict[str, Any]:
     assert isinstance(params, TicketParams)
-    ticket = {
-        "ticket_id": mock_bank.next_ticket_id(),
-        "user_id": user.user_id,
-        "category": params.category,
-        "summary": params.summary,
-        "status": "open",
-    }
-    mock_bank.TICKETS.append(ticket)
-    return {"ok": True, **ticket}
+    return mock_bank.create_ticket(user.user_id, params.category, params.summary)
 
 
 class TransactionParams(BaseModel):
@@ -43,22 +35,9 @@ def _authorize_transaction(user: User, args: dict[str, Any]) -> str | None:
 
 def _submit_transaction(user: User, params: BaseModel) -> dict[str, Any]:
     assert isinstance(params, TransactionParams)
-    src = mock_bank.ACCOUNTS.get(params.from_account)
-    dst = mock_bank.ACCOUNTS.get(params.to_account)
-    if src is None or dst is None:
-        return {"ok": False, "error": "付款或收款账户不存在"}
-    if src["balance"] < params.amount:
-        return {"ok": False, "error": "余额不足"}
-    src["balance"] -= params.amount
-    dst["balance"] += params.amount
-    txn = {
-        "txn_id": mock_bank.next_txn_id(),
-        "from_account": params.from_account,
-        "to_account": params.to_account,
-        "amount": params.amount,
-    }
-    mock_bank.TRANSACTIONS.append(txn)
-    return {"ok": True, **txn}
+    return mock_bank.submit_transaction(
+        params.from_account, params.to_account, params.amount
+    )
 
 
 CREATE_TICKET = ToolSpec(

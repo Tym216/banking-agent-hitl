@@ -24,15 +24,7 @@ def _authorize_account_access(user: User, args: dict[str, Any]) -> str | None:
 
 def _get_balance(user: User, params: BaseModel) -> dict[str, Any]:
     assert isinstance(params, BalanceParams)
-    acct = mock_bank.ACCOUNTS.get(params.account_id)
-    if acct is None:
-        return {"ok": False, "error": f"账户 {params.account_id} 不存在"}
-    return {
-        "ok": True,
-        "account_id": params.account_id,
-        "balance": acct["balance"],
-        "currency": acct["currency"],
-    }
+    return mock_bank.get_balance(params.account_id)
 
 
 GET_ACCOUNT_BALANCE = ToolSpec(

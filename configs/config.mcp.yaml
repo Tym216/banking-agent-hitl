@@ -1,0 +1,42 @@
+# MCP 工具链路演示配置:工具由 MCP server 提供,agent 侧走 MCP 协议消费。
+# 使用方法:
+#   python -m banking_agent.cli --config configs/config.mcp.yaml --scripted
+# stdio 模式无需手动起 server(agent 自动拉起子进程);HTTP 模式先执行:
+#   python -m banking_agent.mcp.server --http
+# 再把下面 mcp.transport 改为 http。
+
+llm:
+  provider: mock            # 演示离线可跑;换 ollama/openai_compat 同其他配置文件
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4o-mini"
+  api_key_env: OPENAI_API_KEY
+  temperature: 0.1
+  timeout_s: 60
+
+embedding:
+  provider: sentence_transformers
+  model: "BAAI/bge-small-zh-v1.5"
+
+rag:
+  kb_dir: "data/knowledge_base"
+  index_dir: "data/index"
+  chunk_size: 400
+  chunk_overlap: 50
+  top_k: 3
+  high_threshold: 0.60
+  low_threshold: 0.40
+
+tools:
+  provider: mcp             # local | mcp
+
+mcp:
+  transport: stdio          # stdio | http
+  url: "http://localhost:8000/mcp"
+  timeout_s: 30
+
+storage:
+  db_path: "data/banking_agent.db"
+  checkpoint_db_path: "data/checkpoints.db"
+
+observability:
+  langsmith_project: "banking-agent-hitl-dev"

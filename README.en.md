@@ -37,12 +37,13 @@ approval step.
 │   ├── rag/                     # Embeddings / FAISS index / three-state retriever / loaders (incl. PDF)
 │   ├── auth/permissions.py      # Roles + tool authorization + forced-approval decisions
 │   ├── tools/                   # Declarative tool registry (risk level / param schema / auth hooks)
+│   ├── mcp/                     # MCP tool path: server (FastMCP) / client (sync bridge) / provider (trust-side registration)
 │   ├── graph/                   # LangGraph state, nodes, workflow, AgentService
 │   ├── storage/                 # SQLite audit tables + AuditLogger
 │   ├── api/app.py               # FastAPI skeleton (/chat, /approvals)
 │   ├── bootstrap.py             # Assembly entry point
 │   └── cli.py                   # CLI demo
-└── tests/                       # Policy QA / tool-calling / security-injection test suites
+└── tests/                       # Policy QA / tool-calling / security-injection / MCP tool-path test suites
 ```
 
 ## Quick Start
@@ -59,6 +60,9 @@ venv-banking-agent/bin/python -m banking_agent.cli
 
 # Local inference via Ollama (requires: ollama pull qwen3.5:9b)
 venv-banking-agent/bin/python -m banking_agent.cli --config configs/config.ollama.yaml --scripted
+
+# MCP tool-path demo (banking tools served by an MCP server; stdio auto-spawns the subprocess)
+venv-banking-agent/bin/python -m banking_agent.cli --config configs/config.mcp.yaml --scripted
 
 # API server
 venv-banking-agent/bin/uvicorn banking_agent.api.app:app --reload
@@ -88,6 +92,37 @@ export BANKING_AGENT_LLM__MODEL=qwen2.5:7b
 export BANKING_AGENT_LLM__BASE_URL=https://api.openai.com/v1
 export OPENAI_API_KEY=sk-...
 ```
+
+## MCP Tool Integration (no graph changes)
+
+The tool source is config-switchable (`tools.provider: local | mcp`): `local` calls
+tools in-process; with `mcp`, banking tools are served by an MCP server
+(`src/banking_agent/mcp/server.py`) and consumed by the agent over the MCP protocol,
+with zero changes to the LangGraph graph.
+
+```bash
+# stdio (default): the agent auto-spawns the server subprocess, nothing to deploy
+venv-banking-agent/bin/python -m banking_agent.cli --config configs/config.mcp.yaml --scripted
+
+# streamable HTTP: tools deployed as a standalone service
+venv-banking-agent/bin/python -m banking_agent.mcp.server --http     # terminal 1
+# set mcp.transport to http in configs/config.mcp.yaml, then run the agent  # terminal 2
+```
+
+Trust-boundary design:
+
+- **The server declares capabilities; the client declares trust**: risk levels, minimum
+  roles and authorization hooks come from the agent-side local policy — MCP annotations
+  (`readOnlyHint` etc.) are merely untrusted hints per the spec, not a security boundary.
+  Registered set = server capabilities ∩ local trust declarations; undeclared server
+  tools are never registered, and a locally declared tool missing on the server fails
+  fast at startup.
+- Permission checks and the `interrupt()` approval gate stay in the agent framework
+  layer — tools move out of the process, the gate does not move.
+- User-identity parameters (e.g. a ticket's `user_id`) are injected by the framework
+  and never appear in the LLM-visible parameter schema.
+- Adding a tool = one `@server.tool` function on the server + one `ToolSpec` with
+  security metadata on the agent side.
 
 ## Three-State RAG
 
