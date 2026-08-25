@@ -34,12 +34,13 @@
 │   ├── rag/                     # Embedding / FAISS 索引 / 三态检索器 / 文档加载(含PDF)
 │   ├── auth/permissions.py      # 角色 + 工具授权 + 强制审批裁决
 │   ├── tools/                   # 声明式工具注册（风险等级/参数schema/授权钩子）
+│   ├── mcp/                     # MCP 工具链路：server(FastMCP) / client(同步桥接) / provider(信任侧注册)
 │   ├── graph/                   # LangGraph 状态、节点、图编排、AgentService
 │   ├── storage/                 # SQLite 审计表 + AuditLogger
 │   ├── api/app.py               # FastAPI 骨架（/chat、/approvals）
 │   ├── bootstrap.py             # 装配入口
 │   └── cli.py                   # CLI demo
-└── tests/                       # 政策问答 / 工具调用 / 安全注入 三类测试
+└── tests/                       # 政策问答 / 工具调用 / 安全注入 / MCP 工具链路 四类测试
 ```
 
 ## 快速开始
@@ -56,6 +57,9 @@ venv-banking-agent/bin/python -m banking_agent.cli
 
 # 使用 Ollama 本地推理（需 ollama pull qwen3.5:9b）
 venv-banking-agent/bin/python -m banking_agent.cli --config configs/config.ollama.yaml --scripted
+
+# MCP 工具链路演示（银行工具经 MCP server 提供，stdio 自动拉起子进程）
+venv-banking-agent/bin/python -m banking_agent.cli --config configs/config.mcp.yaml --scripted
 
 # API 服务
 venv-banking-agent/bin/uvicorn banking_agent.api.app:app --reload
@@ -84,6 +88,29 @@ export BANKING_AGENT_LLM__MODEL=qwen2.5:7b
 export BANKING_AGENT_LLM__BASE_URL=https://api.openai.com/v1
 export OPENAI_API_KEY=sk-...
 ```
+
+## MCP 工具接入（不改图代码）
+
+工具来源可配置切换（`tools.provider: local | mcp`）：`local` 为进程内直调；`mcp` 时银行工具由
+MCP server（`src/banking_agent/mcp/server.py`）提供，agent 侧经 MCP 协议消费，LangGraph 图零改动。
+
+```bash
+# stdio（默认）：agent 自动拉起 server 子进程，无需额外部署
+venv-banking-agent/bin/python -m banking_agent.cli --config configs/config.mcp.yaml --scripted
+
+# streamable HTTP：工具服务独立部署
+venv-banking-agent/bin/python -m banking_agent.mcp.server --http     # 终端 1 启动 server
+# 将 configs/config.mcp.yaml 的 mcp.transport 改为 http 后再运行 agent  # 终端 2
+```
+
+信任边界设计：
+
+- **服务器声明能力，客户端声明信任**：风险等级、最低角色、授权钩子取自 agent 侧本地策略——
+  MCP 注解（`readOnlyHint` 等）按规范只是提示，不作为安全边界。注册集合 = 服务器能力 ∩ 本地
+  信任声明；服务器多出的未声明工具默认不注册，本地声明而服务器缺失则启动即报错。
+- 权限裁决与 `interrupt()` 审批闸门位置不变，仍在 agent 框架层——工具搬到进程外，闸门不动。
+- 用户身份参数（如工单的 `user_id`）由框架注入，不出现在 LLM 可见的参数 schema。
+- 新增一个工具 = server 加一个 `@server.tool` 函数 + agent 侧声明一份含安全元数据的 `ToolSpec`。
 
 ## RAG 三态判定
 

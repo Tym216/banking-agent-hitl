@@ -8,7 +8,7 @@ from banking_agent.graph.workflow import AgentService
 from banking_agent.llm import create_llm
 from banking_agent.rag import Retriever, VectorStore, create_embedder, load_knowledge_base
 from banking_agent.storage import AuditLogger, connect
-from banking_agent.tools import create_default_registry
+from banking_agent.tools import ToolRegistry, create_default_registry
 
 # 演示用户（真实系统中来自用户库/SSO）
 DEMO_USERS: dict[str, User] = {
@@ -42,6 +42,15 @@ def _setup_observability(config: AppConfig) -> None:
         os.environ.setdefault("LANGCHAIN_PROJECT", project)  # 兼容旧版 SDK
 
 
+def build_tool_registry(config: AppConfig) -> ToolRegistry:
+    """按配置选择工具来源:local 进程内直调;mcp 走 MCP 协议消费。"""
+    if config.tools.provider == "mcp":
+        from banking_agent.mcp import MCPToolClient, create_mcp_tool_registry
+
+        return create_mcp_tool_registry(MCPToolClient(config.mcp))
+    return create_default_registry()
+
+
 def create_service(
     config_path: str | Path | None = None,
     config: AppConfig | None = None,
@@ -51,6 +60,6 @@ def create_service(
     _setup_observability(cfg)
     llm = create_llm(cfg.llm)
     retriever = build_retriever(cfg, rebuild_index)
-    registry = create_default_registry()
+    registry = build_tool_registry(cfg)
     audit = AuditLogger(connect(cfg.resolve_path(cfg.storage.db_path)))
     return AgentService(cfg, llm, retriever, registry, audit)

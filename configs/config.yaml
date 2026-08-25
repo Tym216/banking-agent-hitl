@@ -25,13 +25,23 @@ embedding:
 rag:
   kb_dir: "data/knowledge_base"
   index_dir: "data/index"
-  chunk_size: 400
+  chunk_size: 600
   chunk_overlap: 50
   top_k: 3
   # 相似度双阈值（余弦相似度，向量已归一化）。
   # 注意：阈值必须按 embedding 模型标定。bge-small-zh 实测：命中 ~0.76，无关 ~0.32
   high_threshold: 0.60    # >= high: 直接回答
   low_threshold: 0.40     # [low, high): 低置信 → 追问；< low: 拒答
+  query_to_traditional: true  # 简体查询自动转繁体后再检索(匹配繁体文档)
+
+tools:
+  # local: 进程内直接调用；mcp: 工具由 MCP server 提供（见 configs/config.mcp.yaml）
+  provider: local
+
+mcp:
+  transport: stdio          # stdio: 自动拉起子进程 | http: 连独立部署的 server
+  url: "http://localhost:8000/mcp"
+  timeout_s: 30
 
 storage:
   db_path: "data/banking_agent.db"          # 审计与业务数据

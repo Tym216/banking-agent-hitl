@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-21
+
+### Added
+- MCP 工具链路（`tools.provider: local | mcp`）：银行工具由 MCP server（FastMCP）
+  提供，agent 侧经 MCP 协议消费，LangGraph 图零改动；`local` 进程内直调保留为默认
+  （离线确定性测试不变），与 LLM provider 同一套配置切换哲学
+- 传输层双模式：stdio（agent 自动拉起 server 子进程，零配置）与 streamable HTTP
+  （工具服务独立部署，`--http` 启动，支持 `--host/--port`）
+- 信任边界设计：风险等级、最低角色、授权钩子取自 agent 侧本地 ToolSpec，不采信
+  服务器元数据（MCP 注解按规范是 untrusted hints，不构成安全边界）；注册集合 =
+  服务器能力 ∩ 本地信任声明——服务器多出的工具默认拒绝，本地声明而服务器缺失则
+  启动即报错；`user_id` 等身份参数由框架注入，不进入 LLM 可见的参数 schema
+- `mcp/client.py`：官方 async-only SDK 的同步桥接——后台事件循环线程以单任务
+  持有整个会话（anyio cancel scope 要求同任务进出），同步 handler 经
+  `run_coroutine_threadsafe` 提交；异步性封在单个文件内，图/服务层/测试保持同步
+- `configs/config.mcp.yaml` 演示配置；`mock_bank` 业务操作抽成单一实现，
+  本地 handler 与 MCP server 共用
+- 测试 +5（共 19 条）：MCP 端到端（stdio 拉起真实子进程，验证越权在 agent 侧
+  拦截、审批闸门不变、服务端账本生效）、服务端错误传播、信任交集注册、
+  缺失工具 fail-fast、HTTP 传输链路
+
 ## [0.3.1] - 2026-07-13
 
 ### Added
