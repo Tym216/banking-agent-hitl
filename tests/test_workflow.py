@@ -69,7 +69,8 @@ def test_ambiguous_query_clarify_then_classify_with_context(service):
 
 
 def test_resolve_approval_without_pending_returns_error(service):
-    reply = service.resolve_approval("t-wf-nothing", True, "supervisor")
+    staff = DEMO_USERS["u_staff"]
+    reply = service.resolve_approval("t-wf-nothing", True, staff)
     assert reply["status"] == "error"
 
 
@@ -85,7 +86,7 @@ def test_new_message_while_pending_is_not_swallowed(service):
     assert mock_bank.TRANSACTIONS == []
 
     # 完成审批后会话恢复正常
-    reply = service.resolve_approval("t-wf-1", True, "supervisor", "已核实")
+    reply = service.resolve_approval("t-wf-1", True, DEMO_USERS["u_staff"], "已核实")
     assert reply["status"] == "completed"
     assert len(mock_bank.TRANSACTIONS) == 1
     reply = service.chat("t-wf-1", alice, "查一下我的余额")

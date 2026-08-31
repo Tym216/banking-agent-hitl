@@ -28,6 +28,7 @@ class User:
     name: str
     role: Role
     account_id: str | None = None  # 客户本人的账户
+    can_approve: bool = False      # staff/admin 是否可审批
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -35,11 +36,18 @@ class User:
             "name": self.name,
             "role": self.role.value,
             "account_id": self.account_id,
+            "can_approve": self.can_approve,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "User":
-        return cls(d["user_id"], d["name"], Role(d["role"]), d.get("account_id"))
+        return cls(
+            d["user_id"],
+            d["name"],
+            Role(d["role"]),
+            d.get("account_id"),
+            d.get("can_approve", False),
+        )
 
 
 @dataclass

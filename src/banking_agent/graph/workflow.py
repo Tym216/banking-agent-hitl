@@ -20,7 +20,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import Command
 
-from banking_agent.auth.permissions import User
+from banking_agent.auth.permissions import Role, User
 from banking_agent.config import AppConfig
 from banking_agent.graph.nodes import GraphNodes
 from banking_agent.graph.state import AgentState
@@ -119,12 +119,23 @@ class AgentService:
         return self._to_reply(thread_id, result)
 
     def resolve_approval(
-        self, thread_id: str, approved: bool, approver: str, reason: str = ""
+        self, thread_id: str, approved: bool, approver: User, reason: str = ""
     ) -> dict[str, Any]:
+        # 审批闸门校验:必须是 staff 及以上且持有审批权限,否则拒绝
+        if approver.role not in (Role.STAFF, Role.ADMIN):
+            return {
+                "status": "error",
+                "message": f"角色 {approver.role.value} 无权审批",
+            }
+        if not approver.can_approve:
+            return {
+                "status": "error",
+                "message": f"用户 {approver.user_id} 没有审批权限",
+            }
         if self._pending_request(thread_id) is None:
             return {"status": "error", "message": f"会话 {thread_id} 没有待审批的操作"}
         result = self._graph.invoke(
-            Command(resume={"approved": approved, "approver": approver, "reason": reason}),
+            Command(resume={"approved": approved, "approver": approver.user_id, "reason": reason}),
             config={"configurable": {"thread_id": thread_id}},
         )
         return self._to_reply(thread_id, result)

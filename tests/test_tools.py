@@ -18,7 +18,7 @@ def test_transfer_requires_approval_then_executes(service):
     assert reply["approval_request"]["tool_name"] == "submit_transaction"
     assert mock_bank.TRANSACTIONS == []  # 审批前不得执行
 
-    reply = service.resolve_approval("t-tool-2", True, "supervisor", "已核实")
+    reply = service.resolve_approval("t-tool-2", True, DEMO_USERS["u_staff"], "已核实")
     assert reply["status"] == "completed"
     assert len(mock_bank.TRANSACTIONS) == 1
     assert mock_bank.ACCOUNTS["ACC-002"]["balance"] == 1700.00
@@ -29,7 +29,7 @@ def test_transfer_rejected_by_approver(service):
     reply = service.chat("t-tool-3", alice, "向账户 ACC-002 转账 500 元")
     assert reply["status"] == "pending_approval"
 
-    reply = service.resolve_approval("t-tool-3", False, "supervisor", "无法核实收款方")
+    reply = service.resolve_approval("t-tool-3", False, DEMO_USERS["u_staff"], "无法核实收款方")
     assert reply["status"] == "completed"
     assert "未通过" in reply["response"]
     assert mock_bank.TRANSACTIONS == []

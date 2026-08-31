@@ -14,7 +14,7 @@ from banking_agent.tools import ToolRegistry, create_default_registry
 DEMO_USERS: dict[str, User] = {
     "u_alice": User("u_alice", "Alice（客户）", Role.CUSTOMER, "ACC-001"),
     "u_bob": User("u_bob", "Bob（客户）", Role.CUSTOMER, "ACC-002"),
-    "u_staff": User("u_staff", "柜员小王", Role.STAFF),
+    "u_staff": User("u_staff", "柜员小王", Role.STAFF, can_approve=True),
 }
 
 

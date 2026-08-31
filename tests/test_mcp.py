@@ -62,7 +62,7 @@ def test_mcp_end_to_end_flow(mcp_service):
     # 敏感操作仍走 interrupt 审批;批准后账本(在 server 进程内)真实变更
     reply = mcp_service.chat(thread_id, alice, "向账户 ACC-002 转账 300 元")
     assert reply["status"] == "pending_approval"
-    reply = mcp_service.resolve_approval(thread_id, True, "supervisor", "已核实")
+    reply = mcp_service.resolve_approval(thread_id, True, DEMO_USERS["u_staff"], "已核实")
     assert reply["status"] == "completed"
 
     reply = mcp_service.chat(thread_id, alice, "查一下我的余额")
