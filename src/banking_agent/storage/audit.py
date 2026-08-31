@@ -11,6 +11,11 @@ class AuditLogger:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """底层连接，供账号体系(users 表)等复用同一数据库。"""
+        return self._conn
+
     def ensure_conversation(self, thread_id: str, user_id: str) -> None:
         self._conn.execute(
             "INSERT OR IGNORE INTO conversations (thread_id, user_id) VALUES (?, ?)",
@@ -107,5 +112,28 @@ class AuditLogger:
             " decided_at = datetime('now')"
             " WHERE thread_id = ? AND status = 'pending'",
             ("approved" if approved else "rejected", approver, reason, thread_id),
+        )
+        self._conn.commit()
+
+    def log_event(
+        self,
+        entity_type: str,
+        entity_id: str | None,
+        action: str,
+        *,
+        old_value: str | None = None,
+        new_value: str | None = None,
+        operator_id: str | None = None,
+        operator_role: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        """通用审计(append-only)：登录、角色变更、审批等敏感事件。"""
+        self._conn.execute(
+            "INSERT INTO audit_logs"
+            " (entity_type, entity_id, action, old_value, new_value,"
+            " operator_id, operator_role, reason)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (entity_type, entity_id, action, old_value, new_value,
+             operator_id, operator_role, reason),
         )
         self._conn.commit()
