@@ -6,6 +6,7 @@ test_mcp_end_to_end_flow 会经 stdio 拉起真实的 MCP server 子进程,
 
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import sys
@@ -100,16 +101,26 @@ def _wait_port(port: int, timeout: float) -> None:
     raise TimeoutError(f"MCP server 端口 {port} 未在 {timeout}s 内就绪")
 
 
-def test_http_transport():
-    """streamable HTTP 传输:独立进程部署的 server 经 HTTP 提供同一套工具。"""
-    port = _free_port()
-    proc = subprocess.Popen(
+def _start_http_server(port: int, token: str | None) -> subprocess.Popen:
+    env = dict(os.environ)
+    if token:
+        env["MCP_AUTH_TOKEN"] = token
+    return subprocess.Popen(
         [sys.executable, "-m", "banking_agent.mcp.server", "--http", "--port", str(port)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=env,
     )
+
+
+def test_http_transport():
+    """streamable HTTP 传输 + Bearer token 鉴权:token 正确可连接并调用工具。"""
+    port = _free_port()
+    token = "test-secret-token"
+    proc = _start_http_server(port, token)
     try:
         _wait_port(port, timeout=20)
+        os.environ["MCP_AUTH_TOKEN"] = token
         client = None
         for _ in range(3):  # 端口可连到 ASGI 就绪之间可能有极短间隙,重试兜底
             try:
@@ -131,6 +142,24 @@ def test_http_transport():
             assert result["balance"] == 1200.0
         finally:
             client.close()
+            os.environ.pop("MCP_AUTH_TOKEN", None)
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+
+
+def test_http_transport_rejects_wrong_token():
+    """错 token:server 返回 401,客户端连接失败。"""
+    port = _free_port()
+    proc = _start_http_server(port, "correct-token")
+    try:
+        _wait_port(port, timeout=20)
+        os.environ["MCP_AUTH_TOKEN"] = "wrong-token"
+        try:
+            with pytest.raises(RuntimeError):
+                MCPToolClient(MCPConfig(transport="http", url=f"http://127.0.0.1:{port}/mcp", timeout_s=10))
+        finally:
+            os.environ.pop("MCP_AUTH_TOKEN", None)
     finally:
         proc.terminate()
         proc.wait(timeout=10)

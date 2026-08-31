@@ -13,11 +13,13 @@ from __future__ import annotations
 import asyncio
 import atexit
 import json
+import os
 import sys
 import threading
 from contextlib import AsyncExitStack
 from typing import Any
 
+import httpx
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 
@@ -60,9 +62,20 @@ class MCPToolClient:
                     )
                     read, write = await stack.enter_async_context(stdio_client(params))
                 else:  # http
-                    read, write, _ = await stack.enter_async_context(
-                        streamable_http_client(self._cfg.url)
-                    )
+                    token = os.environ.get(self._cfg.auth_token_env)
+                    if token:
+                        http_client = httpx.AsyncClient(
+                            headers={"Authorization": f"Bearer {token}"},
+                            timeout=self._cfg.timeout_s,
+                        )
+                        await stack.enter_async_context(http_client)
+                        read, write, _ = await stack.enter_async_context(
+                            streamable_http_client(self._cfg.url, http_client=http_client)
+                        )
+                    else:
+                        read, write, _ = await stack.enter_async_context(
+                            streamable_http_client(self._cfg.url)
+                        )
                 session = await stack.enter_async_context(ClientSession(read, write))
                 await session.initialize()
                 self._session = session

@@ -8,14 +8,24 @@
     python -m banking_agent.mcp.server           # stdio(由 agent 作为子进程拉起)
     python -m banking_agent.mcp.server --http    # streamable HTTP,默认 127.0.0.1:8000/mcp
     python -m banking_agent.mcp.server --http --port 9000   # 自定义监听地址/端口
+
+信任模型:
+    stdio 模式下信任来自 OS 管道(只有拉起子进程的 agent 能对话),无需鉴权。
+    HTTP 模式下 server 是独立网络服务,任何可达端口的进程都能调用工具——
+    因此 HTTP 模式强制 Bearer token 鉴权:设置环境变量 MCP_AUTH_TOKEN 后,
+    所有请求必须带 Authorization: Bearer <token>,否则 401。
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from banking_agent.tools import mock_bank
 
@@ -40,6 +50,22 @@ def submit_transaction(from_account: str, to_account: str, amount: float) -> dic
     return mock_bank.submit_transaction(from_account, to_account, amount)
 
 
+class _TokenAuthMiddleware(BaseHTTPMiddleware):
+    """静态 Bearer token 校验:HTTP 模式的最小鉴权。"""
+
+    def __init__(self, app, token: str) -> None:
+        super().__init__(app)
+        self._token = token
+
+    async def dispatch(self, request: Request, call_next):
+        if request.headers.get("Authorization") != f"Bearer {self._token}":
+            return JSONResponse(
+                {"error": "unauthorized", "message": "缺少或无效的 MCP_AUTH_TOKEN"},
+                status_code=401,
+            )
+        return await call_next(request)
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -49,6 +75,14 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000, help="HTTP 模式监听端口")
     args = parser.parse_args()
     if args.http:
-        server.settings.host = args.host
-        server.settings.port = args.port
-    server.run(transport="streamable-http" if args.http else "stdio")
+        app = server.streamable_http_app()
+        token = os.environ.get("MCP_AUTH_TOKEN")
+        if not token:
+            print("警告: 未设置 MCP_AUTH_TOKEN,HTTP 模式将拒绝所有请求", flush=True)
+        else:
+            app = _TokenAuthMiddleware(app, token)
+        import uvicorn
+
+        uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    else:
+        server.run(transport="stdio")

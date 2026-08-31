@@ -67,6 +67,8 @@ class MCPConfig(BaseModel):
     transport: Literal["stdio", "http"] = "stdio"
     url: str = "http://localhost:8000/mcp"
     timeout_s: int = 30
+    # HTTP 模式 Bearer token 来源环境变量名(server 与 client 用同一个 token)
+    auth_token_env: str = "MCP_AUTH_TOKEN"
 
 
 class StorageConfig(BaseModel):
@@ -106,4 +108,31 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     data: dict[str, Any] = {}
     if path.exists():
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return AppConfig(**data)
+    # BaseSettings 中 init kwargs(即上面的 YAML)优先级高于环境变量，
+    # 这里手动把 BANKING_AGENT_ 前缀的 env 深合并进 YAML，实现"环境变量覆盖文件"
+    return AppConfig(**_deep_merge(_env_overrides(), data))
+
+
+def _env_overrides() -> dict[str, Any]:
+    """把 BANKING_AGENT_A__B__C=value 解析为 {'a': {'b': {'c': 'value'}}}。"""
+    prefix = "BANKING_AGENT_"
+    out: dict[str, Any] = {}
+    for key in sorted(os.environ):
+        if not key.startswith(prefix):
+            continue
+        parts = key[len(prefix):].lower().split("__")
+        node = out
+        for p in parts[:-1]:
+            node = node.setdefault(p, {})
+        node[parts[-1]] = os.environ[key]
+    return out
+
+
+def _deep_merge(overrides: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(value, merged[key])
+        else:
+            merged[key] = value
+    return merged
