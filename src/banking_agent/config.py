@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -36,23 +36,105 @@ class EmbeddingConfig(BaseModel):
     dim: int = 512
 
 
+class RetrieverItemConfig(BaseModel):
+    """单个检索器配置。min_score 仅 embedding 域内生效（BM25 分数为负，禁止设置）。"""
+
+    type: Literal["embedding", "bm25"] = "embedding"
+    weight: float = 1.0
+    top_k: int = 50          # 粗筛候选数，为过滤/精排留余量
+    min_score: float | None = None   # embedding 粗筛最低分；None=不按分数过滤
+
+    @model_validator(mode="after")
+    def _check(self) -> "RetrieverItemConfig":
+        if self.weight <= 0:
+            raise ValueError("weight 必须为正数")
+        if self.top_k < 1:
+            raise ValueError("top_k 至少为 1")
+        if self.type == "bm25" and self.min_score is not None:
+            raise ValueError("bm25 检索器不允许设置 min_score（FTS5 分数为负，无法共用 embedding 阈值）")
+        if self.min_score is not None and not (0.0 <= self.min_score < 1.0):
+            raise ValueError("min_score 必须在 [0, 1) 或为 None")
+        return self
+
+
+class FusionConfig(BaseModel):
+    """多检索器融合方式：RRF（默认）或加权求和。"""
+
+    method: Literal["rrf", "weighted_sum"] = "rrf"
+    rrf_k: int = 60
+
+    @model_validator(mode="after")
+    def _check(self) -> "FusionConfig":
+        if self.rrf_k < 1:
+            raise ValueError("rrf_k 至少为 1")
+        return self
+
+
+class RerankConfig(BaseModel):
+    """精排配置。分数只用于排序，不参与三态判定（三态已废除）。"""
+
+    enabled: bool = False
+    provider: Literal["mock", "cross_encoder"] = "cross_encoder"
+    model: str = "data/models/bge-reranker-v2-m3"
+    top_k: int = 5            # 精排后保留的候选池大小（须 >= rag.top_k）
+
+    @model_validator(mode="after")
+    def _check(self) -> "RerankConfig":
+        if self.top_k < 1:
+            raise ValueError("rerank.top_k 至少为 1")
+        return self
+
+
 class RAGConfig(BaseModel):
-    kb_dir: str = "data/knowledge_base"
+    kb_dir: str = "data/clean"
     index_dir: str = "data/index"
     chunk_size: int = 600
     chunk_overlap: int = 50
-    top_k: int = 3
-    high_threshold: float = 0.55
-    low_threshold: float = 0.30
+    top_k: int = 3            # 最终返回给 LLM 的条数
+    # deprecated: 双阈值三态判定已废除（追问交给 LLM 自主判断），
+    # 字段仅保留以兼容旧配置/测试传参，逻辑不再使用。
+    high_threshold: float | None = None
+    low_threshold: float | None = None
     query_to_traditional: bool = False  # 简体查询自动转繁体后再检索
+    normalize_text: bool = True         # 切块后归一化（全角→半角等）
+    frontmatter: bool = True            # md frontmatter 解析（只进 metadata）
+    enable_metadata_filter: bool = False  # 元数据过滤开关（默认关，对比效果用）
+    metadata_blacklist: list[str] = Field(
+        default_factory=lambda: ["id", "source_url", "document_version",
+                                 "original_ids", "language"]
+    )
+    # 单一检索器：dict；混合检索：list（每个元素一个检索器配置）
+    retrievers: list[RetrieverItemConfig] | None = None
+    fusion: FusionConfig = Field(default_factory=FusionConfig)
+    rerank: RerankConfig = Field(default_factory=RerankConfig)
+
+    @field_validator("retrievers", mode="before")
+    @classmethod
+    def _normalize_retrievers(cls, v: Any) -> Any:
+        """dict 视为单一检索器，统一归一为 list，避免 union 校验噪音。"""
+        if isinstance(v, dict):
+            return [v]
+        return v
 
     @model_validator(mode="after")
     def _check_bounds(self) -> "RAGConfig":
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("chunk_overlap 必须小于 chunk_size，否则切分会死循环")
-        if self.low_threshold > self.high_threshold:
+        if (self.high_threshold is not None and self.low_threshold is not None
+                and self.low_threshold > self.high_threshold):
             raise ValueError("low_threshold 不能大于 high_threshold")
+        if self.retrievers is not None and not self.retrievers:
+            raise ValueError("retrievers 列表不能为空")
+        if self.rerank.enabled and self.rerank.top_k < self.top_k:
+            raise ValueError("rerank.top_k 必须 >= rag.top_k（精排候选池需覆盖最终返回数）")
         return self
+
+    @property
+    def retrievers_resolved(self) -> list[RetrieverItemConfig]:
+        """返回检索器列表：None 用默认 embedding。"""
+        if self.retrievers is None:
+            return [RetrieverItemConfig(type="embedding")]
+        return self.retrievers
 
 
 class ToolsConfig(BaseModel):

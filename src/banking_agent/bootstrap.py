@@ -25,11 +25,16 @@ def build_retriever(config: AppConfig, rebuild_index: bool = False) -> Retriever
     if rebuild_index or not store.load(index_dir):
         kb_dir = config.resolve_path(config.rag.kb_dir)
         chunks = load_knowledge_base(
-            Path(kb_dir), config.rag.chunk_size, config.rag.chunk_overlap
+            Path(kb_dir),
+            config.rag.chunk_size,
+            config.rag.chunk_overlap,
+            normalize=config.rag.normalize_text,
+            frontmatter=config.rag.frontmatter,
+            metadata_blacklist=config.rag.metadata_blacklist,
         )
-        store.build(chunks)
+        store.build(chunks, index_dir / "chunks_meta.db")
         store.save(index_dir)
-    return Retriever(store, config.rag) 
+    return Retriever(store, config.rag)
 
 
 def _setup_observability(config: AppConfig) -> None:

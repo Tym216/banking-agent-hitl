@@ -5,8 +5,24 @@ __pycache__/
 .pytest_cache/
 data/index/
 data/*.db
+data/*
+eval/*.yaml
+evals/*.yaml
+
 .env
 .claude/
+
+# 本地工具/临时脚本，暂不纳入版本控制
+gen_evals.py
+evals/
+extraction_output/
+tmp_scripts/
+tests/test_rag_eval.py
+test_doc_conversion*.py
+test_exchange.py
+test_marker.py
+test_unstructured.py
+指令.txt
 
 # 私人求职材料，不进公开仓库
 docs/

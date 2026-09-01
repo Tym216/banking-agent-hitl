@@ -32,7 +32,7 @@ class MockLLMClient:
         if "[TASK:extract_params]" in prompt:
             return self._extract(prompt, user_text)
         if "[TASK:answer_with_context]" in prompt:
-            return self._answer(prompt)
+            return self._answer(prompt, user_text)
         if "[TASK:clarify]" in prompt:
             return "抱歉，我不完全确定您的问题。能否补充更多细节，例如具体的业务类型或卡种？"
         return "您好，我是银行客服助手，可以帮您查询政策、账户余额，或创建工单。"
@@ -63,8 +63,16 @@ class MockLLMClient:
             )
         return "{}"
 
-    def _answer(self, prompt: str) -> str:
+    def _answer(self, prompt: str, user_text: str = "") -> str:
         ctx_m = re.search(r"<context>(.*?)</context>", prompt, re.S)
         ctx = ctx_m.group(1).strip() if ctx_m else ""
         first_para = ctx.split("\n\n")[0].strip()
+        # 模拟"LLM 自主判断资料不足"：问题与上下文无任何 CJK bigram 重合 → 追问
+        if first_para and user_text:
+            q_bigrams = set(re.findall(r"[\u4e00-\u9fff]{2}", user_text))
+            ctx_bigrams = set(re.findall(r"[\u4e00-\u9fff]{2}", ctx))
+            if q_bigrams and not (q_bigrams & ctx_bigrams):
+                return "抱歉，资料里似乎没有直接覆盖您问的内容，能否再补充一些细节？"
+        if not first_para:
+            return "抱歉，我不完全确定您的问题。能否补充更多细节，例如具体的业务类型或卡种？"
         return f"根据我行政策资料：{first_para}\n（以上答案来自知识库检索结果）"

@@ -12,9 +12,6 @@ class AgentState(TypedDict, total=False):
     history: list[dict[str, str]]  # 最近若干轮对话（不含本轮输入），由服务层从审计库加载
     intent: str                   # policy_qa | balance_query | create_ticket | transfer | chitchat
     retrieval: dict[str, Any]     # RetrievalResult.to_log_dict()
-    # 上一轮低置信追问时保存的原始问题；本轮检索时与用户补充合并。
-    # 借助 checkpointer 跨轮持久化，回答/拒答后清空。
-    pending_clarify_query: str
     # 缺参数被追问的工具调用：{"tool_name", "args", "missing"}。
     # 等参期间用户的补充/反问继续原流程；明确切换意图时清空。
     pending_tool: dict[str, Any]

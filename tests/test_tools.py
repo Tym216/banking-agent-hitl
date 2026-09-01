@@ -34,3 +34,19 @@ def test_transfer_rejected_by_approver(service):
     assert "未通过" in reply["response"]
     assert mock_bank.TRANSACTIONS == []
     assert mock_bank.ACCOUNTS["ACC-001"]["balance"] == 58200.50
+
+
+def test_transfer_missing_amount_clarifies_then_completes(service):
+    """缺参追问：框架层 pydantic 校验拦截（非 LLM 判断），补参后继续。"""
+    alice = DEMO_USERS["u_alice"]
+    reply = service.chat("t-tool-4", alice, "向账户 ACC-002 转账")
+    assert reply["status"] == "completed"
+    assert "还需要" in reply["response"] and "amount" in reply["response"]
+    assert mock_bank.TRANSACTIONS == []
+
+    reply = service.chat("t-tool-4", alice, "500 元")
+    assert reply["status"] == "pending_approval"
+
+    reply = service.resolve_approval("t-tool-4", True, DEMO_USERS["u_staff"], "已核实")
+    assert reply["status"] == "completed"
+    assert len(mock_bank.TRANSACTIONS) == 1

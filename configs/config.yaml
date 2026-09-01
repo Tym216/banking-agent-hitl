@@ -17,22 +17,47 @@ embedding:
   # sentence_transformers: 本地模型（demo 默认，首次运行会下载模型）
   # openai_compat: 走 embedding API
   provider: sentence_transformers
-  model: "BAAI/bge-small-zh-v1.5"
+  model: "BAAI/bge-large-zh-v1.5" #"BAAI/bge-small-zh-v1.5"
   base_url: ""
   api_key_env: OPENAI_API_KEY
   dim: 512          # mock 模式使用；sentence_transformers 自动探测
 
 rag:
-  kb_dir: "data/knowledge_base"
+  kb_dir: "data/clean"          # 索引来源:parse_pdfs → build_clean 后的干净文本
   index_dir: "data/index"
   chunk_size: 600
   chunk_overlap: 50
-  top_k: 3
-  # 相似度双阈值（余弦相似度，向量已归一化）。
-  # 注意：阈值必须按 embedding 模型标定。bge-small-zh 实测：命中 ~0.76，无关 ~0.32
-  high_threshold: 0.60    # >= high: 直接回答
-  low_threshold: 0.40     # [low, high): 低置信 → 追问；< low: 拒答
-  query_to_traditional: true  # 简体查询自动转繁体后再检索(匹配繁体文档)
+  top_k: 3                      # 最终返回给 LLM 的条数
+  # deprecated: 双阈值三态判定已废除，追问交给 LLM 自主判断；字段仅保留兼容旧配置
+  # high_threshold: 0.60
+  # low_threshold: 0.40
+  query_to_traditional: true    # 简体查询自动转繁体后再检索(匹配繁体文档)
+  normalize_text: true          # 切块后归一化(全角→半角/空白折叠/标点统一)
+  frontmatter: true             # md frontmatter 解析(只进 metadata,不进检索正文)
+  enable_metadata_filter: false # 元数据过滤开关(默认关,开启后对比效果)
+  metadata_blacklist:           # 黑名单字段:不进检索正文、不参与过滤匹配,但完整保留给 LLM
+    - id
+    - source_url
+    - document_version
+    - original_ids
+    - language
+  # 单一检索器:dict; 混合检索:list(每个元素一个检索器)
+  retrievers:
+    - type: embedding           # embedding | bm25
+      weight: 0.6
+      top_k: 50                 # 粗筛候选数(为过滤/精排留余量)
+      min_score: 0.15           # 仅 embedding 域内生效; bm25 禁止设置
+    - type: bm25
+      weight: 0.4
+      top_k: 50
+  fusion:
+    method: rrf                 # rrf | weighted_sum
+    rrf_k: 60
+  rerank:
+    enabled: false              # 模型就绪后置 true
+    provider: cross_encoder     # mock | cross_encoder
+    model: "data/models/bge-reranker-v2-m3"
+    top_k: 5                    # 精排后候选池大小(须 >= rag.top_k)
 
 tools:
   # local: 进程内直接调用；mcp: 工具由 MCP server 提供（见 configs/config.mcp.yaml）
