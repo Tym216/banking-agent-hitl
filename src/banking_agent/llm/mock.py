@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import re
 
+from langsmith import traceable
+
 from banking_agent.llm.base import Message
 
 _INTENT_RULES: list[tuple[str, list[str]]] = [
@@ -19,16 +21,48 @@ _INTENT_RULES: list[tuple[str, list[str]]] = [
 
 _ACCOUNT_RE = re.compile(r"ACC-\d+")
 _AMOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*元")
+# 与 mock_bank.lookup_account 的别名注册表一致（测试镜像，真实 LLM 自行泛化）。
+# ASCII 字母数字边界而非 \b：CJK 邻接也可命中（"我是bob本人"→bob），
+# 但仍不命中 bobby/abob 这类前后缀。
+_NAME_ACCOUNT_RE = re.compile(r"(?<![A-Za-z0-9_])(?:alice|bob|carol)(?![A-Za-z0-9_])", re.I)
+_FROM_RE = re.compile(r"从\s*(ACC-\d+|alice|bob|carol)", re.I)
+_TO_RE = re.compile(
+    r"(?:转给|转到|转至|汇给|汇至|给)\s*(ACC-\d+|alice|bob|carol)", re.I
+)
+
+
+def _account_terms(text: str) -> list[str]:
+    """按出现顺序收集账号/姓名候选（大小写不敏感）。"""
+    found: list[str] = []
+    for m in _ACCOUNT_RE.finditer(text):
+        found.append(m.group(0))
+    for m in _NAME_ACCOUNT_RE.finditer(text):
+        found.append(m.group(0))
+    # 合并为出现顺序（按原文本 index 排序去重）
+    tokens = [
+        (m.start(), m.group(0))
+        for m in _ACCOUNT_RE.finditer(text)
+    ] + [(m.start(), m.group(0)) for m in _NAME_ACCOUNT_RE.finditer(text)]
+    tokens.sort()
+    seen: list[str] = []
+    for _, tok in tokens:
+        if tok.lower() not in [s.lower() for s in seen]:
+            seen.append(tok)
+    return seen
 
 
 class MockLLMClient:
+
+    @traceable(run_type="llm")
     def chat(self, messages: list[Message], **kwargs: object) -> str:
         prompt = "\n".join(m["content"] for m in messages)
         user_text = next(
             (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
         )
         if "[TASK:classify_intent]" in prompt:
-            return self._classify(user_text)
+            intent = self._classify(user_text)
+            print(f"[DEBUG] classify_intent -> {intent}", flush=True)
+            return intent
         if "[TASK:extract_params]" in prompt:
             return self._extract(prompt, user_text)
         if "[TASK:answer_with_context]" in prompt:
@@ -44,22 +78,48 @@ class MockLLMClient:
         return "chitchat"
 
     def _extract(self, prompt: str, text: str) -> str:
-        accounts = _ACCOUNT_RE.findall(text)
         amount_m = _AMOUNT_RE.search(text)
         amount = float(amount_m.group(1).replace(",", "")) if amount_m else None
         if "tool=submit_transaction" in prompt:
+            terms = _account_terms(text)
+            from_m = _FROM_RE.search(text)
+            from_c = from_m.group(1) if from_m else None
+            to_m = _TO_RE.search(text)
+            if to_m:
+                to_c = to_m.group(1)
+            else:
+                # 回退：首个非 from 的账号/姓名候选（兼容"向账户 ACC-002 转账"句式）
+                to_c = next((t for t in terms if t.lower() != (from_c or "").lower()), None)
             return json.dumps(
-                {"to_account": accounts[0] if accounts else None, "amount": amount},
+                {"from_account": from_c, "to_account": to_c, "amount": amount},
                 ensure_ascii=False,
             )
         if "tool=get_account_balance" in prompt:
-            return json.dumps(
-                {"account_id": accounts[0] if accounts else None}, ensure_ascii=False
-            )
+            terms = _account_terms(text)
+            account = terms[0] if terms else None
+            if account is None:
+                # 通用回退：捕获"<姓名>的余额"中的姓名（模拟真实 LLM 上报未知名字）；
+                # 排除含代词（我/你/他/她/它）的误捕
+                m = re.search(r"([\u4e00-\u9fff]{2,3})的余额", text)
+                cand = m.group(1) if m else None
+                if cand and not any(c in cand for c in "你我他她它"):
+                    account = cand
+            return json.dumps({"account_id": account}, ensure_ascii=False)
         if "tool=create_ticket" in prompt:
-            category = "complaint" if "投诉" in text else "general"
+            category = None
+            if "投诉" in text:
+                category = "complaint"
+            elif "挂失" in text or "盗刷" in text or "丢失" in text:
+                category = "card_loss"
+            elif "报障" in text or "反馈" in text:
+                category = "general"
+            # 修改/恢复类指令不含新摘要内容 → summary 置 null（保留草稿原摘要）
+            if any(k in text for k in ("继续", "改成", "修改", "换成", "回到")):
+                summary = None
+            else:
+                summary = text[:200]
             return json.dumps(
-                {"category": category, "summary": text[:200]}, ensure_ascii=False
+                {"category": category, "summary": summary}, ensure_ascii=False
             )
         return "{}"
 

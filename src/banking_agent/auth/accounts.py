@@ -20,6 +20,9 @@ SEED_USERS: list[dict] = [
     ("u_alice", "alice", "alice123", "Alice（客户）", Role.CUSTOMER, False, "ACC-001"),
     ("u_bob", "bob", "bob123", "Bob（客户）", Role.CUSTOMER, False, "ACC-002"),
     ("u_carol", "carol", "carol123", "Carol（客户）", Role.CUSTOMER, False, "ACC-003"),
+    ("u_zhou", "zhou", "zhou123", "周先生（客户）", Role.CUSTOMER, False, "ACC-004"),
+    ("u_liang", "liang", "liang123", "梁小姐（客户）", Role.CUSTOMER, False, "ACC-005"),
+    ("u_zheng", "zheng", "zheng123", "郑太太（客户）", Role.CUSTOMER, False, "ACC-006"),
     ("u_staff", "staff_approver", "staff123", "柜员王（可审批）", Role.STAFF, True, None),
     ("u_staff_ro", "staff_viewer", "staff123", "柜员李（不可审批）", Role.STAFF, False, None),
 ]
