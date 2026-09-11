@@ -26,3 +26,7 @@ test_unstructured.py
 
 # 私人求职材料，不进公开仓库
 docs/
+
+# prompt 实验记录与杂散临时文件
+PROMPT_HISTORY.PY
+how --stat 2bbf625
