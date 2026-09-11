@@ -54,7 +54,7 @@ rag:
     method: rrf                 # rrf | weighted_sum
     rrf_k: 60
   rerank:
-    enabled: true #false              # 模型就绪后置 true
+    enabled: true               # 默认启用精排（hybrid-rerank-top20 变体）
     provider: cross_encoder     # mock | cross_encoder
     model: "data/models/bge-reranker-v2-m3"
     top_k: 10                   # 精排后候选池大小(须 >= rag.top_k)
