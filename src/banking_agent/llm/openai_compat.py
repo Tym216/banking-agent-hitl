@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 
 from openai import OpenAI
+from langsmith import traceable
 
 from banking_agent.config import LLMConfig
 from banking_agent.llm.base import Message
@@ -26,6 +27,7 @@ class OpenAICompatClient:
             timeout=cfg.timeout_s,
         )
 
+    @traceable(run_type="llm")
     def chat(self, messages: list[Message], **kwargs: object) -> str:
         resp = self._client.chat.completions.create(
             model=self._cfg.model,

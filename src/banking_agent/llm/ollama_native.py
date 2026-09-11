@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import httpx
 
+from langsmith import traceable
+
 from banking_agent.config import LLMConfig
 from banking_agent.llm.base import Message
 
@@ -17,6 +19,7 @@ class OllamaNativeClient:
         self._cfg = cfg
         self._base = cfg.base_url.removesuffix("/v1").rstrip("/")
 
+    @traceable(run_type="llm")
     def chat(self, messages: list[Message], **kwargs: object) -> str:
         payload: dict = {
             "model": self._cfg.model,
