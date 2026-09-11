@@ -46,7 +46,10 @@ def create_ticket(user_id: str, category: str, summary: str) -> dict[str, Any]:
 
 @server.tool(annotations=ToolAnnotations(destructiveHint=True))
 def submit_transaction(from_account: str, to_account: str, amount: float) -> dict[str, Any]:
-    """提交转账交易"""
+    """ 提交转账交易
+        from_account和to_account只能接收账户号码, 通常"ACC-"开头。
+        框架层可从名字搜索账号注入。
+    """
     return mock_bank.submit_transaction(from_account, to_account, amount)
 
 
