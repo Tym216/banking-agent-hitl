@@ -78,4 +78,4 @@ def check_permission(user: User, spec: "ToolSpec", args: dict[str, Any]) -> Perm
             return PermissionResult(False, False, err)
     if spec.risk_level == RiskLevel.SENSITIVE:
         return PermissionResult(True, True, "敏感操作，需人工审批")
-    return PermissionResult(True, False, "只读操作，允许直接执行")
+    return PermissionResult(True, False, "普通操作，允许直接执行")
