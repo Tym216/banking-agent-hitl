@@ -30,3 +30,6 @@ docs/
 # prompt 实验记录与杂散临时文件
 PROMPT_HISTORY.PY
 how --stat 2bbf625
+
+# 本地配置覆盖（不上传）
+configs/config_local*.yaml
