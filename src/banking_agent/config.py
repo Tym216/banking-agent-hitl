@@ -76,12 +76,15 @@ class RerankConfig(BaseModel):
     enabled: bool = False
     provider: Literal["mock", "cross_encoder"] = "cross_encoder"
     model: str = "data/models/bge-reranker-v2-m3"
-    top_k: int = 5            # 精排后保留的候选池大小（须 >= rag.top_k）
+    top_k: int = 10           # 精排后保留的候选池大小（须 >= rag.top_k）
+    candidate_pool: int | None = None  # 送入精排的融合后候选数；None=精排全部融合候选
 
     @model_validator(mode="after")
     def _check(self) -> "RerankConfig":
         if self.top_k < 1:
             raise ValueError("rerank.top_k 至少为 1")
+        if self.candidate_pool is not None and self.candidate_pool < 1:
+            raise ValueError("rerank.candidate_pool 至少为 1（或 None=精排全部候选）")
         return self
 
 
@@ -90,7 +93,7 @@ class RAGConfig(BaseModel):
     index_dir: str = "data/index"
     chunk_size: int = 600
     chunk_overlap: int = 50
-    top_k: int = 3            # 最终返回给 LLM 的条数
+    top_k: int = 10           # 最终返回给 LLM 的条数
     # deprecated: 双阈值三态判定已废除（追问交给 LLM 自主判断），
     # 字段仅保留以兼容旧配置/测试传参，逻辑不再使用。
     high_threshold: float | None = None

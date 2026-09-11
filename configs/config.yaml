@@ -27,7 +27,7 @@ rag:
   index_dir: "data/index"
   chunk_size: 600
   chunk_overlap: 50
-  top_k: 3                      # 最终返回给 LLM 的条数
+  top_k: 10                     # 最终返回给 LLM 的条数
   # deprecated: 双阈值三态判定已废除，追问交给 LLM 自主判断；字段仅保留兼容旧配置
   # high_threshold: 0.60
   # low_threshold: 0.40
@@ -54,10 +54,11 @@ rag:
     method: rrf                 # rrf | weighted_sum
     rrf_k: 60
   rerank:
-    enabled: false              # 模型就绪后置 true
+    enabled: true #false              # 模型就绪后置 true
     provider: cross_encoder     # mock | cross_encoder
     model: "data/models/bge-reranker-v2-m3"
-    top_k: 5                    # 精排后候选池大小(须 >= rag.top_k)
+    top_k: 10                   # 精排后候选池大小(须 >= rag.top_k)
+    candidate_pool: 20          # 只精排融合后前 N 个候选(None=全部)；评估推荐 20
 
 tools:
   # local: 进程内直接调用；mcp: 工具由 MCP server 提供（见 configs/config.mcp.yaml）

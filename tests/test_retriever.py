@@ -152,3 +152,57 @@ def test_bm25_min_score_forbidden():
 
     with pytest.raises(ValueError):
         RAGConfig(retrievers=[{"type": "bm25", "min_score": 0.1}])
+
+
+def test_retrieve_top_k_override():
+    """评估用：cfg.top_k=2 但传 top_k=50 时返回全部候选；默认仍截断到配置值。"""
+    cfg = RAGConfig(chunk_size=200, overlap=20, top_k=2,
+                    retrievers={"type": "embedding"})
+    tmp = tempfile.mkdtemp()
+    for name, content in _DOCS.items():
+        (Path(tmp) / name).write_text(content, encoding="utf-8")
+    chunks = load_knowledge_base(Path(tmp), cfg.chunk_size, cfg.chunk_overlap)
+    store = VectorStore(MockEmbedder(512))
+    store.build(chunks, Path(tmp) / "meta.db")
+    r = Retriever(store, cfg)
+
+    default = r.retrieve("信用卡年费是多少")
+    assert len(default.hits) == 2  # cfg.top_k=2
+
+    overridden = r.retrieve("信用卡年费是多少", top_k=50)
+    assert len(overridden.hits) == len(_DOCS)  # 全部 3 个候选
+    assert overridden.hits[0][0].doc_id == default.hits[0][0].doc_id
+
+
+def test_rerank_candidate_pool_limits_input(monkeypatch):
+    """candidate_pool 只精排融合后的前 N 个候选；None 时精排全部。"""
+    import banking_agent.rag.retriever as retriever_mod
+
+    seen: list[int] = []
+
+    class SpyReranker:
+        def rerank(self, query: str, chunks) -> list[float]:
+            seen.append(len(chunks))
+            return [float(len(chunks) - i) for i in range(len(chunks))]
+
+    monkeypatch.setattr(retriever_mod, "create_reranker", lambda cfg: SpyReranker())
+    tmp = tempfile.mkdtemp()
+    for name, content in _DOCS.items():
+        (Path(tmp) / name).write_text(content, encoding="utf-8")
+    chunks = load_knowledge_base(Path(tmp), 200, 20)
+    store = VectorStore(MockEmbedder(512))
+    store.build(chunks, Path(tmp) / "meta.db")
+
+    cfg_all = RAGConfig(chunk_size=200, overlap=20,
+                        rerank={"enabled": True, "provider": "mock", "top_k": 10})
+    r_all = Retriever(store, cfg_all)
+    res_all = r_all.retrieve("信用卡年费是多少", top_k=50)
+    assert seen and seen[0] == len(_DOCS)      # 默认精排全部 3 个
+
+    cfg_pool = RAGConfig(chunk_size=200, overlap=20,
+                         rerank={"enabled": True, "provider": "mock",
+                                 "top_k": 10, "candidate_pool": 2})
+    r_pool = Retriever(store, cfg_pool)
+    res_pool = r_pool.retrieve("信用卡年费是多少", top_k=50)
+    assert seen[-1] == 2                        # 只送 2 个进精排
+    assert len(res_pool.hits) <= 2              # 结果不会超出候选池

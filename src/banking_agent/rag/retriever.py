@@ -12,6 +12,8 @@ from banking_agent.rag.loader import Chunk
 from banking_agent.rag.rerank import create_reranker
 from banking_agent.rag.store import VectorStore
 
+from langsmith import traceable
+
 
 @dataclass
 class RetrievalResult:
@@ -99,7 +101,13 @@ class Retriever:
         ordered = sorted(merged.items(), key=lambda kv: -kv[1])
         return [(chunks[key], score) for key, score in ordered]
 
-    def retrieve(self, query: str, filters: dict | None = None) -> RetrievalResult:
+    @traceable(run_type="retriever") 
+    def retrieve(self, query: str, filters: dict | None = None,
+                 top_k: int | None = None) -> RetrievalResult:
+        """检索管线：粗筛 → 融合 → 过滤 → 精排 → 截断 top_k。
+
+        top_k 用于评估时覆盖最终截断（如取 50 再按 K 切片），默认 None 走配置。
+        """
         try:
             q = _s2t(query) if self._cfg.query_to_traditional else query
             ranked = self._coarse(q)
@@ -121,12 +129,16 @@ class Retriever:
                 filtered = fused
             fused = filtered
 
-        # 精排：对全部候选重排，取 rerank.top_k 作为候选池，最终截断到 rag.top_k
+        # 精排：先按 candidate_pool 截融合候选（None=全部），重排后取 rerank.top_k
         if self._reranker is not None:
-            chunks = [c for c, _ in fused]
+            pool = fused
+            if self._cfg.rerank.candidate_pool is not None:
+                pool = fused[: self._cfg.rerank.candidate_pool]
+            chunks = [c for c, _ in pool]
             scores = self._reranker.rerank(q, chunks)
             fused = sorted(zip(chunks, scores), key=lambda cs: -cs[1])[
                 : self._cfg.rerank.top_k
             ]
 
-        return RetrievalResult(hits=fused[: self._cfg.top_k])
+        limit = top_k if top_k is not None else self._cfg.top_k
+        return RetrievalResult(hits=fused[:limit])
