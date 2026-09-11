@@ -44,9 +44,11 @@ CREATE_TICKET = ToolSpec(
     name="create_ticket",
     description="创建客服工单（投诉、挂失、报障等）",
     params_model=TicketParams,
-    risk_level=RiskLevel.SENSITIVE,
+    # 工单创建降级为"仅客户确认"：客户对草稿确认后直接创建，无需 staff 审批
+    risk_level=RiskLevel.NORMAL,
     required_role=Role.CUSTOMER,
     handler=_create_ticket,
+    requires_confirmation=True,
 )
 
 SUBMIT_TRANSACTION = ToolSpec(
@@ -57,4 +59,5 @@ SUBMIT_TRANSACTION = ToolSpec(
     required_role=Role.CUSTOMER,
     handler=_submit_transaction,
     authorize=_authorize_transaction,
+    requires_confirmation=True,
 )

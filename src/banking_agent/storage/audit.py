@@ -115,6 +115,51 @@ class AuditLogger:
         )
         self._conn.commit()
 
+    def list_pending_approvals(self) -> list[dict]:
+        """待审批列表（跨用户，供 staff 控制台）。"""
+        rows = self._conn.execute(
+            "SELECT a.id, a.thread_id, a.requested_at,"
+            "       tc.tool_name, tc.args_json,"
+            "       c.user_id, u.name AS requester_name"
+            " FROM approvals a"
+            " JOIN tool_calls tc ON tc.id = a.tool_call_id"
+            " JOIN conversations c ON c.thread_id = a.thread_id"
+            " LEFT JOIN users u ON u.user_id = c.user_id"
+            " WHERE a.status = 'pending'"
+            " ORDER BY a.requested_at"
+        ).fetchall()
+        out = []
+        for r in rows:
+            item = dict(r)
+            item["args"] = json.loads(item.pop("args_json") or "{}")
+            out.append(item)
+        return out
+
+    def list_user_threads(self, user_id: str, limit: int = 20) -> list[dict]:
+        """某用户的会话列表（最近 limit 条），带待审批标记与首条消息标题。"""
+        rows = self._conn.execute(
+            "SELECT c.thread_id, c.started_at,"
+            "       (SELECT COUNT(*) FROM approvals a"
+            "         WHERE a.thread_id = c.thread_id AND a.status = 'pending')"
+            "       AS pending_count,"
+            "       (SELECT content FROM messages m"
+            "         WHERE m.thread_id = c.thread_id AND m.role = 'user'"
+            "         ORDER BY m.id LIMIT 1) AS first_msg"
+            " FROM conversations c WHERE c.user_id = ?"
+            " ORDER BY c.started_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def thread_approval_status(self, thread_id: str) -> list[dict]:
+        """某会话的审批记录（含已决），供客户/发起人查看结果。"""
+        rows = self._conn.execute(
+            "SELECT id, status, approver, reason, requested_at, decided_at"
+            " FROM approvals WHERE thread_id = ? ORDER BY requested_at",
+            (thread_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def log_event(
         self,
         entity_type: str,

@@ -95,3 +95,13 @@ def decide(thread_id: str, decision: ApprovalDecision,
     if result.get("status") == "error":
         raise HTTPException(403, result["message"])
     return result
+
+
+@app.get("/approvals/pending")
+def list_pending(x_user_id: str = Header(default="")) -> dict[str, Any]:
+    """待审批列表：仅 staff 且 can_approve 可见，客户/无权限 staff 403。"""
+    user = _current_user(x_user_id)
+    result = _get_service().list_pending_approvals(user)
+    if result.get("status") == "error":
+        raise HTTPException(403, result["message"])
+    return result

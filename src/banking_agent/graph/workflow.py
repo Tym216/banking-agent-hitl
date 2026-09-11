@@ -2,10 +2,13 @@
 
 图结构：
   classify_intent ─┬─ policy_qa ──────────────────────────────► END
-                   ├─ prepare_tool → check_permission ─┬─(拒绝/缺参)► END
-                   │                                   ├─(只读)──► execute_tool ► END
-                   │                                   └─(敏感)──► approval ─┬─(通过)► execute_tool
-                   └─ chitchat ───────────────────────► END      └─(驳回)────────► END
+                   ├─ confirm 态(关键词)─► handle_confirm ─┬─(确认)► check_permission
+                   │                                        └─(取消)► END
+                   ├─ prepare_tool ─(需客户确认)─► confirm_prompt ► END
+                   │              └─(无需确认)──► check_permission ─┬─(拒绝/缺参)► END
+                   │                                                ├─(普通)──► execute_tool ► END
+                   │                                                └─(敏感)──► approval ─┬─(通过)► execute_tool
+                   └─ chitchat ────────────────────────► END          └─(驳回)────────► END
 
 approval 节点内的 interrupt() + SqliteSaver checkpointer 实现中断/恢复：
 进程重启后凭 thread_id 依然可以恢复待审批的工作流。
@@ -35,24 +38,55 @@ def build_graph(nodes: GraphNodes, checkpointer: Any):
     g.add_node("classify_intent", nodes.classify_intent)
     g.add_node("policy_qa", nodes.policy_qa)
     g.add_node("prepare_tool", nodes.prepare_tool)
+    g.add_node("confirm_prompt", nodes.confirm_prompt)
+    g.add_node("handle_confirm", nodes.handle_confirm)
     g.add_node("check_permission", nodes.check_permission)
     g.add_node("approval", nodes.approval)
     g.add_node("execute_tool", nodes.execute_tool)
     g.add_node("chitchat", nodes.chitchat)
 
     g.set_entry_point("classify_intent")
-    g.add_conditional_edges(
-        "classify_intent",
-        lambda s: s["intent"],
-        {
+
+    def _route_after_classify(s: AgentState) -> str:
+        if s.get("confirm_action") in ("confirm", "cancel"):
+            return "handle_confirm"
+        return {
             "policy_qa": "policy_qa",
             "balance_query": "prepare_tool",
             "create_ticket": "prepare_tool",
             "transfer": "prepare_tool",
             "chitchat": "chitchat",
-        },
+        }[s["intent"]]
+
+    g.add_conditional_edges(
+        "classify_intent", _route_after_classify,
+        {"handle_confirm": "handle_confirm", "policy_qa": "policy_qa",
+         "prepare_tool": "prepare_tool", "chitchat": "chitchat"},
     )
-    g.add_edge("prepare_tool", "check_permission")
+
+    def _route_after_prepare(s: AgentState) -> str:
+        if s.get("denied"):
+            return "denied"
+        # 追问补参态（含账户解析失败）：保留自定义话术并等用户补充，本轮结束
+        if s.get("pending_tool"):
+            return "pending"
+        # 工具要求客户确认且当前草稿匹配 → 展示草稿等待确认
+        pc = s.get("pending_confirm") or {}
+        if pc.get("tool_name") == s.get("tool_name"):
+            return "confirm_prompt"
+        return "check_permission"
+
+    g.add_conditional_edges(
+        "prepare_tool", _route_after_prepare,
+        {"denied": END, "pending": END, "confirm_prompt": "confirm_prompt",
+         "check_permission": "check_permission"},
+    )
+    g.add_conditional_edges(
+        "handle_confirm",
+        lambda s: "check_permission" if s.get("confirm_execute") else "end",
+        {"check_permission": "check_permission", "end": END},
+    )
+    g.add_edge("confirm_prompt", END)
 
     def _route_permission(s: AgentState) -> str:
         perm = s["permission"]
@@ -139,6 +173,30 @@ class AgentService:
             config={"configurable": {"thread_id": thread_id}},
         )
         return self._to_reply(thread_id, result)
+
+    def list_pending_approvals(self, user: User) -> dict[str, Any]:
+        """待审批列表（staff 且 can_approve 才可查看）。"""
+        if user.role not in (Role.STAFF, Role.ADMIN) or not user.can_approve:
+            return {
+                "status": "error",
+                "message": f"角色 {user.role.value} 无权查看待审批列表",
+            }
+        return {"status": "ok", "approvals": self._audit.list_pending_approvals()}
+
+    def list_threads(self, user: User) -> dict[str, Any]:
+        """当前用户的会话列表（仅本人）。"""
+        return {"status": "ok", "threads": self._audit.list_user_threads(user.user_id)}
+
+    def thread_status(self, thread_id: str, user: User) -> dict[str, Any]:
+        """查看某会话的审批记录（仅会话属主；staff 可跨用户查看）。"""
+        owner = self._audit.conn.execute(
+            "SELECT user_id FROM conversations WHERE thread_id = ?", (thread_id,)
+        ).fetchone()
+        if owner is None:
+            return {"status": "error", "message": f"会话 {thread_id} 不存在"}
+        if owner["user_id"] != user.user_id and user.role not in (Role.STAFF, Role.ADMIN):
+            return {"status": "error", "message": "只能查看自己发起的会话"}
+        return {"status": "ok", "approvals": self._audit.thread_approval_status(thread_id)}
 
     def _pending_request(self, thread_id: str) -> dict[str, Any] | None:
         """返回该会话待审批请求的 payload；无待审批返回 None。"""

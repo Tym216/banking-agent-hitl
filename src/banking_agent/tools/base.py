@@ -12,7 +12,7 @@ from banking_agent.auth.permissions import Role, User
 
 
 class RiskLevel(str, Enum):
-    READONLY = "readonly"    # 直接执行
+    NORMAL = "normal"      # 无需人工审批（写操作可配合 requires_confirmation 走客户确认）
     SENSITIVE = "sensitive"  # 必须人工审批
 
 
@@ -26,6 +26,8 @@ class ToolSpec:
     handler: Callable[[User, BaseModel], dict[str, Any]]
     # 返回 None 表示通过，返回字符串表示拒绝原因（如越权查询他人账户）
     authorize: Callable[[User, dict[str, Any]], str | None] | None = None
+    # 执行前客户确认（草稿→确认/取消/修改），与 staff 审批是两个正交维度
+    requires_confirmation: bool = False
 
     def validate_args(self, args: dict[str, Any]) -> BaseModel:
         return self.params_model(**args)
