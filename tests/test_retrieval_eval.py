@@ -11,8 +11,8 @@ from banking_agent.rag.eval_metrics import (
 )
 
 _MERGED = canon("""
-HSBC EveryMile 信用卡：在底特律机场的 Vino Volo 餐厅可用免费餐食，meal set 或 免費套餐。
-Red 信用卡永久豁免年费。Visa Signature 卡年费 1800 元。
+示例信用卡：在底特律机场的 Vino Volo 餐厅可用免费餐食，meal set 或 免費套餐。
+白金信用卡永久豁免年费。钻石卡年费 1800 元。
 """)
 
 
