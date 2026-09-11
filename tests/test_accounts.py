@@ -75,7 +75,10 @@ def test_approval_requires_staff_with_permission(service):
     """客户与无权限 staff 审批均被拒；有权限 staff 通过。"""
     alice = DEMO_USERS["u_alice"]
     staff_no_perm = User("u_x", "无权限柜员", Role.STAFF, can_approve=False)
+    # 转账先过客户确认草稿，确认后进入待审批
     reply = service.chat("t-auth-1", alice, "向账户 ACC-002 转账 100 元")
+    assert "确认" in reply["response"]
+    reply = service.chat("t-auth-1", alice, "确认")
     assert reply["status"] == "pending_approval"
 
     # 客户本人审批 → 拒绝
