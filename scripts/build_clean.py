@@ -41,7 +41,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     overrides = {f.name for f in ov_dir.iterdir() if f.is_file()}
-    # 忽略扩展名匹配：hsbc_credit-card.json 可覆盖 hsbc_credit-card.txt
+    # 忽略扩展名匹配：sample-card.json 可覆盖 sample-card.txt
     override_stems = {Path(name).stem: name for name in overrides}
     used_override, copied, orphan = 0, 0, 0
 

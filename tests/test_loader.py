@@ -92,7 +92,7 @@ def test_normalize_text():
 def test_frontmatter_parsed_to_metadata():
     md = """---
 card_types:
-  - HSBC Red
+  - 示例白金卡
 source_url: https://example.com
 document_version: "2025-06"
 ---
@@ -105,11 +105,11 @@ document_version: "2025-06"
     assert len(chunks) >= 1
     c = chunks[0]
     # frontmatter 只进 metadata
-    assert c.metadata["card_types"] == ["HSBC Red"]
+    assert c.metadata["card_types"] == ["示例白金卡"]
     assert c.metadata["source_url"] == "https://example.com"
     # 不进检索正文，也不进展示正文
     assert "source_url" not in c.text
-    assert "HSBC Red" not in (c.display_text or c.text)
+    assert "示例白金卡" not in (c.display_text or c.text)
 
 
 def test_frontmatter_no_frontmatter_ok():
