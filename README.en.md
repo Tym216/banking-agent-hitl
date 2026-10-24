@@ -124,16 +124,6 @@ Trust-boundary design:
 - Adding a tool = one `@server.tool` function on the server + one `ToolSpec` with
   security metadata on the agent side.
 
-## Three-State RAG
-
-| Condition | Behavior |
-|---|---|
-| top similarity ≥ `high_threshold` | answer with citations |
-| between thresholds | low confidence → ask a clarifying question |
-| < `low_threshold` or no hits | refuse (hallucination guard) |
-
-Thresholds live under `rag` in `configs/config.yaml` and must be calibrated
-per embedding model.
 
 ## Approval Flow (interrupt / resume)
 
