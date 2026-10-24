@@ -112,15 +112,6 @@ venv-banking-agent/bin/python -m banking_agent.mcp.server --http     # 终端 1 
 - 用户身份参数（如工单的 `user_id`）由框架注入，不出现在 LLM 可见的参数 schema。
 - 新增一个工具 = server 加一个 `@server.tool` 函数 + agent 侧声明一份含安全元数据的 `ToolSpec`。
 
-## RAG 三态判定
-
-| 条件 | 行为 |
-|---|---|
-| top 相似度 ≥ `high_threshold` | 基于引用回答 |
-| 介于两阈值之间 | 低置信，生成追问 |
-| < `low_threshold` 或无命中 | 拒答（防幻觉） |
-
-阈值在 `configs/config.yaml` 的 `rag` 段配置，需按所用 embedding 模型标定。
 
 ## 审批流（中断/恢复）
 
